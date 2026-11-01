@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -38,6 +40,13 @@ type Model struct {
 	// Shell command execution & terminal history
 	terminalInput textinput.Model
 	history       []string
+	scrollOffset  int // 0 = scrolled to bottom, >0 = scrolled up by N lines
+	cwd           string
+
+	// Command history navigation
+	cmdHistory []string
+	cmdIndex   int // -1 when not browsing or at new prompt
+	savedInput string
 
 	// Feedback message ("Fed Luna! +30%", "Pet Luna <3")
 	notice     string
@@ -49,6 +58,11 @@ type Model struct {
 
 func NewModel(species string, compact bool, statePath string, petState *PetState) Model {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		currentDir = "."
+	}
 
 	ti := textinput.New()
 	ti.Placeholder = "Type shell command or pet command (:feed, :pet, :name <newname>)..."
@@ -72,10 +86,14 @@ func NewModel(species string, compact bool, statePath string, petState *PetState
 		tickCount:     0,
 		rng:           r,
 		terminalInput: ti,
+		cwd:           currentDir,
+		cmdHistory:    make([]string, 0),
+		cmdIndex:      -1,
 		history: []string{
-			"✨ termpet initialized! Your companion roams around as you type commands.",
-			"💡 Use standard terminal commands (dir, ls, git, echo, etc.)",
-			"💡 Quick Pet Shortcuts: type ':f' to feed, ':p' to pet, ':name <new>' to rename, or 'exit'/'quit' to quit.",
+			"✨ TermPet initialized! Your companion roams around as you type commands.",
+			"💡 Use standard terminal commands (cd, dir, ls, git, echo, etc.)",
+			"💡 Scroll: [PgUp] / [PgDn] / [Shift+Up] / [Shift+Down] | Command history: [Up] / [Down] | [Tab] for completion",
+			"💡 Pet Shortcuts: ':f' to feed, ':p' to pet, ':name <new>' to rename, 'exit'/'quit' to quit.",
 		},
 	}
 }
@@ -107,9 +125,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = SaveState(m.statePath, m.petState)
 			return m, tea.Quit
 
+		case tea.KeyPgUp:
+			m.scrollUp(5)
+			return m, nil
+
+		case tea.KeyPgDown:
+			m.scrollDown(5)
+			return m, nil
+
+		case tea.KeyUp:
+			if msg.Alt || (msg.Runes != nil && len(msg.Runes) > 0) {
+				m.scrollUp(1)
+				return m, nil
+			}
+			m.navigateHistory(-1)
+			return m, nil
+
+		case tea.KeyDown:
+			if msg.Alt {
+				m.scrollDown(1)
+				return m, nil
+			}
+			m.navigateHistory(1)
+			return m, nil
+
+		case tea.KeyTab:
+			m.handleTabCompletion()
+			return m, nil
+
 		case tea.KeyEnter:
 			inputStr := strings.TrimSpace(m.terminalInput.Value())
 			if inputStr != "" {
+				// Record to command history
+				if len(m.cmdHistory) == 0 || m.cmdHistory[len(m.cmdHistory)-1] != inputStr {
+					m.cmdHistory = append(m.cmdHistory, inputStr)
+				}
+				m.cmdIndex = -1
+				m.savedInput = ""
+
+				// Automatically reset scroll offset on new command
+				m.scrollOffset = 0
+
 				m.handleCommand(inputStr)
 				m.terminalInput.Reset()
 			}
@@ -148,13 +204,147 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *Model) scrollUp(delta int) {
+	usableHeight := m.height - 2
+	if usableHeight < 1 {
+		usableHeight = 1
+	}
+	maxScroll := len(m.history) - usableHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	m.scrollOffset += delta
+	if m.scrollOffset > maxScroll {
+		m.scrollOffset = maxScroll
+	}
+}
+
+func (m *Model) scrollDown(delta int) {
+	m.scrollOffset -= delta
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+}
+
+func (m *Model) navigateHistory(dir int) {
+	if len(m.cmdHistory) == 0 {
+		return
+	}
+
+	if m.cmdIndex == -1 {
+		if dir == -1 {
+			m.savedInput = m.terminalInput.Value()
+			m.cmdIndex = len(m.cmdHistory) - 1
+			m.terminalInput.SetValue(m.cmdHistory[m.cmdIndex])
+			m.terminalInput.SetCursor(len(m.terminalInput.Value()))
+		}
+		return
+	}
+
+	newIdx := m.cmdIndex + dir
+	if newIdx < 0 {
+		// Stay at oldest
+		m.cmdIndex = 0
+		m.terminalInput.SetValue(m.cmdHistory[0])
+		m.terminalInput.SetCursor(len(m.terminalInput.Value()))
+	} else if newIdx >= len(m.cmdHistory) {
+		// Returned past newest, restore saved input
+		m.cmdIndex = -1
+		m.terminalInput.SetValue(m.savedInput)
+		m.terminalInput.SetCursor(len(m.savedInput))
+	} else {
+		m.cmdIndex = newIdx
+		m.terminalInput.SetValue(m.cmdHistory[newIdx])
+		m.terminalInput.SetCursor(len(m.terminalInput.Value()))
+	}
+}
+
+func (m *Model) handleTabCompletion() {
+	val := m.terminalInput.Value()
+	cursor := m.terminalInput.Position()
+	if cursor > len(val) {
+		cursor = len(val)
+	}
+
+	prefix := val[:cursor]
+	parts := strings.Fields(prefix)
+
+	// Pet commands auto-complete
+	petCommands := []string{":feed", ":f", ":pet", ":p", ":name ", ":quit", ":q", "clear", "cls", "exit"}
+	if len(parts) <= 1 && (strings.HasPrefix(prefix, ":") || strings.HasPrefix(prefix, "c") || strings.HasPrefix(prefix, "e")) {
+		for _, cmd := range petCommands {
+			if strings.HasPrefix(cmd, prefix) && cmd != prefix {
+				m.terminalInput.SetValue(cmd + val[cursor:])
+				m.terminalInput.SetCursor(len(cmd))
+				return
+			}
+		}
+	}
+
+	// File / Directory path auto-completion
+	targetWord := ""
+	startIdx := strings.LastIndexAny(prefix, " \t\"'")
+	if startIdx >= 0 {
+		targetWord = prefix[startIdx+1:]
+	} else {
+		targetWord = prefix
+	}
+
+	resolvedDir := m.cwd
+	matchPrefix := targetWord
+
+	if strings.ContainsAny(targetWord, "/\\") {
+		dirPart := filepath.Dir(targetWord)
+		basePart := filepath.Base(targetWord)
+		if filepath.IsAbs(dirPart) {
+			resolvedDir = dirPart
+		} else {
+			resolvedDir = filepath.Join(m.cwd, dirPart)
+		}
+		matchPrefix = basePart
+	}
+
+	entries, err := os.ReadDir(resolvedDir)
+	if err != nil {
+		return
+	}
+
+	var matches []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(strings.ToLower(name), strings.ToLower(matchPrefix)) {
+			completed := name
+			if entry.IsDir() {
+				completed += string(filepath.Separator)
+			}
+			matches = append(matches, completed)
+		}
+	}
+
+	if len(matches) == 1 {
+		// Replace matched segment
+		var fullCompleted string
+		if strings.ContainsAny(targetWord, "/\\") {
+			dirPart := filepath.Dir(targetWord)
+			fullCompleted = filepath.Join(dirPart, matches[0])
+		} else {
+			fullCompleted = matches[0]
+		}
+
+		newVal := prefix[:len(prefix)-len(targetWord)] + fullCompleted + val[cursor:]
+		m.terminalInput.SetValue(newVal)
+		m.terminalInput.SetCursor(len(prefix) - len(targetWord) + len(fullCompleted))
+	} else if len(matches) > 1 {
+		m.addHistoryLine("Matches: " + strings.Join(matches, "  "))
+	}
+}
+
 func (m *Model) handleCommand(rawCmd string) {
 	lower := strings.ToLower(rawCmd)
 
 	// Built-in pet commands & exit
 	if lower == "quit" || lower == "exit" || lower == ":q" {
 		_ = SaveState(m.statePath, m.petState)
-		// Quit signal can be emitted or handled
 		m.history = append(m.history, "Goodbye! Exiting...")
 		return
 	}
@@ -196,10 +386,41 @@ func (m *Model) handleCommand(rawCmd string) {
 
 	if lower == "cls" || lower == "clear" {
 		m.history = nil
+		m.scrollOffset = 0
 		return
 	}
 
-	// Execute as real terminal command in OS shell!
+	// Directory Persistence: cd support
+	if strings.HasPrefix(lower, "cd ") || lower == "cd" {
+		m.addHistoryLine("❯ " + rawCmd)
+		target := strings.TrimSpace(rawCmd[2:])
+		target = strings.Trim(target, "\"'")
+
+		if target == "" || target == "~" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				target = home
+			}
+		}
+
+		var newPath string
+		if filepath.IsAbs(target) {
+			newPath = filepath.Clean(target)
+		} else {
+			newPath = filepath.Clean(filepath.Join(m.cwd, target))
+		}
+
+		info, err := os.Stat(newPath)
+		if err != nil || !info.IsDir() {
+			m.addHistoryLine(fmt.Sprintf("cd: no such directory: %s", target))
+		} else {
+			m.cwd = newPath
+			_ = os.Chdir(newPath)
+		}
+		return
+	}
+
+	// Execute as real terminal command in OS shell
 	m.addHistoryLine("❯ " + rawCmd)
 
 	var execCmd *exec.Cmd
@@ -208,6 +429,7 @@ func (m *Model) handleCommand(rawCmd string) {
 	} else {
 		execCmd = exec.Command("sh", "-c", rawCmd)
 	}
+	execCmd.Dir = m.cwd
 
 	out, err := execCmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
@@ -216,8 +438,7 @@ func (m *Model) handleCommand(rawCmd string) {
 	}
 
 	lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
-	// Add up to 50 lines to keep history reasonable
-	limit := 50
+	limit := 100
 	if len(lines) > limit {
 		lines = lines[len(lines)-limit:]
 	}
@@ -228,9 +449,9 @@ func (m *Model) handleCommand(rawCmd string) {
 
 func (m *Model) addHistoryLine(line string) {
 	m.history = append(m.history, line)
-	// Keep history bounded to 200 lines
-	if len(m.history) > 200 {
-		m.history = m.history[len(m.history)-200:]
+	// Keep history bounded to 500 lines
+	if len(m.history) > 500 {
+		m.history = m.history[len(m.history)-500:]
 	}
 }
 
@@ -376,7 +597,7 @@ func (m *Model) clampPosition() {
 
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
-		return "Starting termpet..."
+		return "Starting TermPet..."
 	}
 
 	// Layout budget:
@@ -388,17 +609,26 @@ func (m Model) View() string {
 		usableHeight = 1
 	}
 
-	// 1. Get terminal background lines from history
+	// 1. Get terminal background lines with scrollOffset support
 	historyLines := make([]string, usableHeight)
 	histCount := len(m.history)
-	startHist := 0
-	if histCount > usableHeight {
-		startHist = histCount - usableHeight
+
+	endIdx := histCount - m.scrollOffset
+	if endIdx > histCount {
+		endIdx = histCount
+	}
+	if endIdx < 0 {
+		endIdx = 0
+	}
+
+	startIdx := endIdx - usableHeight
+	if startIdx < 0 {
+		startIdx = 0
 	}
 
 	for r := 0; r < usableHeight; r++ {
-		hIdx := startHist + r
-		if hIdx < histCount {
+		hIdx := startIdx + r
+		if hIdx >= 0 && hIdx < endIdx {
 			historyLines[r] = m.history[hIdx]
 		} else {
 			historyLines[r] = ""
@@ -419,7 +649,6 @@ func (m Model) View() string {
 	case StateWalking:
 		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#50FA7B"))
 	default:
-		// Dragon gold/amber by default
 		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#FFB86C")).Bold(true)
 	}
 
@@ -437,12 +666,10 @@ func (m Model) View() string {
 			sprLine := spriteLines[spriteLineIdx]
 			sprWidth := runewidth.StringWidth(sprLine)
 
-			// If background text is shorter than pet X position, pad space and append pet
 			if bgWidth <= m.x {
 				pad := strings.Repeat(" ", m.x-bgWidth)
 				screenLines[r] = bgText + pad + sprLine
 			} else {
-				// Overlay pet on top of line text: take prefix up to pet X, then pet, then remaining bg
 				prefix := truncateOrPad(bgText, m.x)
 				suffix := sliceFromWidth(bgText, m.x+sprWidth)
 				screenLines[r] = prefix + sprLine + suffix
@@ -452,8 +679,13 @@ func (m Model) View() string {
 		}
 	}
 
-	// 4. Command Input Bar
-	inputBar := m.terminalInput.View()
+	// 4. Command Input Bar with current working directory prompt
+	dirBase := filepath.Base(m.cwd)
+	if dirBase == "." || dirBase == "/" || dirBase == "\\" {
+		dirBase = m.cwd
+	}
+	cwdPrompt := lipgloss.NewStyle().Foreground(lipgloss.Color("#BD93F9")).Render(dirBase) + " "
+	inputBar := cwdPrompt + m.terminalInput.View()
 
 	// 5. Status Bar
 	statusBar := m.renderStatusBar()
@@ -526,24 +758,31 @@ func (m Model) renderStatusBar() string {
 	keyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#F1FA8C"))
 
+	scrollIndicator := ""
+	if m.scrollOffset > 0 {
+		scrollIndicator = fmt.Sprintf(" [▲ %d lines]", m.scrollOffset)
+	}
+
 	noticeStr := ""
 	if m.notice != "" {
 		noticeStr = fmt.Sprintf(" | %s", m.notice)
 	}
 
-	info := fmt.Sprintf(" 🐉 %s (%s) | Hunger: %s | State: %s%s",
+	info := fmt.Sprintf(" 🐉 %s (%s) | Hunger: %s | State: %s%s%s",
 		nameStyle.Render(m.petState.Name),
 		m.species,
 		hungerStyle.Render(fmt.Sprintf("%d%%", hungerVal)),
 		stateStyle.Render(string(m.state)),
+		scrollIndicator,
 		noticeStr,
 	)
 
-	hints := fmt.Sprintf("[%s]:feed [%s]:pet [%s]:name <txt> [%s]exit ",
+	hints := fmt.Sprintf("[%s]:feed [%s]:pet [%s]hist [%s]scroll [%s]quit ",
 		keyStyle.Render(":f"),
 		keyStyle.Render(":p"),
-		keyStyle.Render(":n"),
-		keyStyle.Render("quit"),
+		keyStyle.Render("↑↓"),
+		keyStyle.Render("PgUp/Dn"),
+		keyStyle.Render("exit"),
 	)
 
 	infoLen := runewidth.StringWidth(info)
