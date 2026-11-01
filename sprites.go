@@ -21,6 +21,9 @@ const (
 	StateSleeping StateType = "sleeping"
 	StateHappy    StateType = "happy"
 	StateHungry   StateType = "hungry"
+	StateCurious  StateType = "curious"
+	StateAngry    StateType = "angry"
+	StateVictory  StateType = "victory"
 )
 
 type SpriteFrames struct {
@@ -34,6 +37,9 @@ type SpeciesSprites struct {
 	Sleeping SpriteFrames
 	Happy    SpriteFrames
 	Hungry   SpriteFrames
+	Curious  SpriteFrames
+	Angry    SpriteFrames
+	Victory  SpriteFrames
 }
 
 type SpeciesDefinition struct {
@@ -96,6 +102,36 @@ var SpeciesMap = map[string]SpeciesDefinition{
 					" feed me!  /\\_/\\   \n          ( ;.; )  \n           /| W |\\ \n          \\/  -  \\  \n            =\"==\"=\"=",
 				},
 			},
+			Curious: SpriteFrames{
+				Left: []string{
+					"    /\\_/\\  ?  \n   ( @.@ )/   \n  ~/| W |\\    \n  /  -  \\/    \n =\"==\"=\"=     ",
+					"    /\\_/\\  ?? \n   ( O.O )/   \n  ~/| W |\\    \n  /  -  \\/    \n =\"==\"=\"=     ",
+				},
+				Right: []string{
+					"  ? /\\_/\\     \n    \\( @.@ )  \n    /| W |\\~  \n   \\/  -  \\   \n     =\"==\"=\"= ",
+					" ?? /\\_/\\     \n    \\( O.O )  \n    /| W |\\~  \n   \\/  -  \\   \n     =\"==\"=\"= ",
+				},
+			},
+			Angry: SpriteFrames{
+				Left: []string{
+					"    /\\_/\\  GRRR!\n   ( >o< ) / (fire)\n   /| W |\\/   \n  /  -  \\/    \n =\"==\"=\"=     ",
+					"    /\\_/\\  GRRR!\n   ( `o` ) / (fire)\n   /| W |\\/   \n  /  -  \\/    \n =\"==\"=\"=     ",
+				},
+				Right: []string{
+					"GRRR!  /\\_/\\  \n(fire)\\ ( >o< )\n      \\ /| W |\\ \n      \\/  -  \\  \n        =\"==\"=\"=",
+					" GRRR! /\\_/\\  \n (fire)\\ ( `o` )\n       \\ /| W |\\ \n       \\/  -  \\  \n         =\"==\"=\"=",
+				},
+			},
+			Victory: SpriteFrames{
+				Left: []string{
+					"  * /\\_/\\ *\\o/\n   ( ^o^ )/   \n ~(<3|W|<3)~  \n  /  -  \\/    \n =\"==\"=\"=     ",
+					" \\o/*\\_/\\ *   \n   ( ^o^ )\\   \n ~(<3|W|<3)~  \n  /  -  \\/    \n =\"==\"=\"=     ",
+				},
+				Right: []string{
+					"\\o/* /\\_/\\ *  \n    \\( ^o^ )  \n   ~(<3|W|<3)~ \n   \\/  -  \\   \n     =\"==\"=\"= ",
+					"   * /\\_/*\\o/ \n    /( ^o^ )  \n   ~(<3|W|<3)~ \n   \\/  -  \\   \n     =\"==\"=\"= ",
+				},
+			},
 		},
 		Compact: SpeciesSprites{
 			Idle: SpriteFrames{
@@ -117,6 +153,18 @@ var SpeciesMap = map[string]SpeciesDefinition{
 			Hungry: SpriteFrames{
 				Left:  []string{"<~(;o;)[feed!]"},
 				Right: []string{"[feed!](;o;)~>"},
+			},
+			Curious: SpriteFrames{
+				Left:  []string{"<~(@.@)?"},
+				Right: []string{"?(o.@ )~>"},
+			},
+			Angry: SpriteFrames{
+				Left:  []string{"<~(>o<)!"},
+				Right: []string{"!(>o< )~>"},
+			},
+			Victory: SpriteFrames{
+				Left:  []string{"<~(^o^)*"},
+				Right: []string{"*(^o^ )~>"},
 			},
 		},
 	},
@@ -156,6 +204,12 @@ func GetFrame(species string, compact bool, state StateType, dir Direction, tick
 		sf = sprites.Happy
 	case StateHungry:
 		sf = sprites.Hungry
+	case StateCurious:
+		sf = sprites.Curious
+	case StateAngry:
+		sf = sprites.Angry
+	case StateVictory:
+		sf = sprites.Victory
 	case StateIdle:
 		fallthrough
 	default:

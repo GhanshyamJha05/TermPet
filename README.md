@@ -2,58 +2,61 @@
 
 An interactive terminal pet that roams across your **real live terminal workspace** while allowing you to run shell commands in place!
 
-You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls`, `git`, `cd`, `echo`, etc.). Your pet roams above and across your terminal output in real time.
+You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls`, `git`, `cd`, `echo`, etc.). Your pet roams above and across your terminal output in real time with active reactions to your work.
 
 ---
 
-## Features
+## What's New: Advanced Pet Behavior & Interactivity 🎮
 
-1. **Interactive Shell Integration**:
-   - Type any terminal command directly at the `❯ ` prompt with persistent directory support (`cd`).
-   - Output renders naturally in the terminal history window while your pet explores above it.
-2. **Directory Persistence (`cd` support)**:
-   - Built-in `cd <dir>`, `cd ..`, `cd ~` support that persists across commands.
-   - Current directory folder name is displayed next to the command prompt.
-3. **Scrollback Navigation**:
-   - Press **`PageUp`** / **`PageDown`** to scroll through output history.
-   - Status bar clearly shows how many lines you are scrolled up (`[▲ N lines]`), and automatically snaps back to bottom on new commands.
-4. **Command History Navigation**:
-   - Press **`Up`** / **`Down`** arrows to browse previously entered shell and pet commands.
-5. **Tab Auto-Completion**:
-   - Press **`Tab`** to auto-complete pet commands (`:feed`, `:pet`, `:name`, etc.) as well as local file and folder paths.
-6. **Baby Dragon Species (`dragon`) by default**:
-   - Detailed ASCII wings, horns, tail, animated paws, resting sleep pose (`(___m_m)`), happy heart wings (`~(<3|W|<3)~`), and hungry fire breath.
-   - Also includes `cat`, `dog`, and `ghost` sprites.
-7. **Compact Mode**:
-   - Pass `--small` for a compact one-line sprite ideal for narrow tmux panes or status splits.
-8. **Persistence**:
-   - Pet name, hunger, and last-seen timestamp are stored in `~/.termpet/state.json`.
+1. **Typing Curiosity**:
+   - As you type commands into the prompt, your pet perks up, tilts its head with curious eyes (`StateCurious`), and trots down toward your prompt to watch you type.
+2. **Command Outcome Reactions**:
+   - **On Success (exit 0)**: Your dragon celebrates with a victory spin (`StateVictory`), raising its claws and showering celebratory sparkles (`★`, `✨`, `🎉`). Mood/Happiness goes up!
+   - **On Error / Failure (non-zero exit)**: Dragon enters `StateAngry`, stomping and puffing warning flame sparks (`🔥`, `💥`).
+3. **Multi-Stat Simulation (Hunger, Mood/Happiness, Energy, Cleanliness)**:
+   - **Hunger**: Increases slowly over time.
+   - **Mood / Happiness**: Drops if neglected, but soars when you feed (`:feed`), pet (`:pet`), clean (`:clean`), or successfully run commands.
+   - **Energy**: Drains while active. When depleted, your pet naturally lies down to sleep and recover energy.
+   - **Cleanliness & Poop Mechanic**: If left well-fed without cleaning, messes (`💩`) appear on the terminal floor. Type `:clean` to tidy up with fresh bubbly particle effects.
+4. **Visual Particles**:
+   - Floating hearts (`♥`), stars (`★`), and celebratory sparkles appear when interacting with your pet.
+5. **Audible Terminal Bell (`:bell`)**:
+   - Emits a gentle terminal alert pulse when hunger is critical (\(\ge 90\%\)) or on command failure. Toggle on/off anytime with `:bell`.
 
 ---
 
-## Built-In Pet Commands & Shortcuts
+## Features & Navigation
 
-You can type these directly into the terminal prompt:
+- **Directory Persistence**: Full `cd <dir>`, `cd ..`, and `cd ~` support that tracks your working directory across shell commands.
+- **Scrollback Navigation**: Use **`PageUp`** / **`PageDown`** to scroll long terminal outputs; status bar shows `[▲ N lines]`.
+- **Command History**: **`↑`** / **`↓`** arrows to browse through command history.
+- **Tab Auto-Completion**: **`Tab`** auto-completes pet commands as well as filesystem paths.
+- **Compact Mode**: `--small` provides a compact one-line sprite for tmux or narrow splits.
+
+---
+
+## Pet Commands
 
 | Command | Action |
 |---|---|
-| `:f` or `:feed` or `feed` | Feed your pet (hunger -25%, triggers happy celebration) |
-| `:p` or `:pet` or `pet` | Pet your dragon (triggers happy affection) |
-| `:name <newname>` | Rename your pet (e.g., `:name Sparky`) |
-| `clear` or `cls` | Clears terminal history scrollback |
-| `exit` or `quit` or `Ctrl+C` | Saves pet status to `~/.termpet/state.json` and exits cleanly |
+| `:f` or `:feed` | Feed your pet (hunger -25%, happiness +15%, spawns hearts) |
+| `:p` or `:pet` | Pet your companion (happiness +20%, spawns heart sparkles) |
+| `:clean` | Clean up messes (`💩`) on the terminal floor (cleanliness 100%) |
+| `:bell` | Toggle audible terminal alerts on/off |
+| `:name <txt>` | Rename your pet on the fly |
+| `clear` or `cls` | Clears terminal scrollback |
+| `exit` or `quit` | Saves pet status to `~/.termpet/state.json` and exits cleanly |
 
 ---
 
-## Navigation Shortcuts
+## Key Shortcuts
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Cycle through previous command history |
-| `Tab` | Auto-complete commands and file/directory paths |
-| `PageUp` | Scroll up terminal output history by 5 lines |
-| `PageDown` | Scroll down terminal output history by 5 lines |
-| `Ctrl+C` / `Esc` | Cleanly save state and quit |
+| `↑` / `↓` | Cycle command history |
+| `Tab` | Auto-complete commands & paths |
+| `PageUp` / `PageDown` | Scroll terminal history up/down |
+| `Ctrl+C` / `Esc` | Save state and quit |
 
 ---
 
@@ -66,13 +69,13 @@ go build -o termpet.exe .
 
 ### 2. Run
 ```powershell
-# Run with default Baby Dragon ("Draco")
+# Run with default Baby Dragon
 .\termpet.exe
 
-# Choose a custom name
+# Custom pet name
 .\termpet.exe -name Sparky
 
-# Compact 1-line mode for tmux panes
+# Compact mode for small panes
 .\termpet.exe -small
 ```
 

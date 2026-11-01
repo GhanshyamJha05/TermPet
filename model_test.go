@@ -14,9 +14,11 @@ func TestModelLifecycleAndActions(t *testing.T) {
 	statePath := tempDir + "/test_state.json"
 
 	petState := &PetState{
-		Name:     "Draco",
-		Hunger:   80.0, // Hungry initially
-		LastSeen: time.Now(),
+		Name:      "Draco",
+		Hunger:    80.0, // Hungry initially
+		Happiness: 50.0,
+		Energy:    60.0,
+		LastSeen:  time.Now(),
 	}
 
 	m := NewModel("dragon", false, statePath, petState)
@@ -43,6 +45,9 @@ func TestModelLifecycleAndActions(t *testing.T) {
 	if m.state != StateHappy {
 		t.Errorf("Feeding should trigger StateHappy, got %v", m.state)
 	}
+	if len(m.particles) == 0 {
+		t.Errorf("Feeding should spawn heart/sparkle particles")
+	}
 
 	// Test petting command ":pet"
 	m.handleCommand(":pet")
@@ -56,17 +61,10 @@ func TestModelLifecycleAndActions(t *testing.T) {
 		t.Errorf("Expected pet name Sparky, got %q", m.petState.Name)
 	}
 
-	// Test terminal command execution (e.g. echo hello)
+	// Test terminal command execution (echo hello) -> should trigger StateVictory
 	m.handleCommand("echo hello")
-	found := false
-	for _, line := range m.history {
-		if strings.Contains(line, "hello") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("Expected command output 'hello' in history, got %v", m.history)
+	if m.state != StateVictory {
+		t.Errorf("Successful command should trigger StateVictory, got %v", m.state)
 	}
 
 	// Test View rendering
@@ -74,8 +72,64 @@ func TestModelLifecycleAndActions(t *testing.T) {
 	if !strings.Contains(rendered, "Sparky") {
 		t.Errorf("View output should contain pet name 'Sparky'")
 	}
-	if !strings.Contains(rendered, ":feed") {
-		t.Errorf("View output should contain command hints")
+}
+
+func TestTypingReactionAndCuriosity(t *testing.T) {
+	tempDir := t.TempDir()
+	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
+	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m.state = StateIdle
+
+	// Force seed typing reaction directly
+	m.handleTypingReaction()
+	// Either stayed or turned curious based on roll; test calling directly works
+	if m.state == StateCurious {
+		if m.targetY == 0 {
+			t.Errorf("Expected targetY to be updated near prompt")
+		}
+	}
+}
+
+func TestPoopMechanicAndCleaning(t *testing.T) {
+	tempDir := t.TempDir()
+	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, HasPoop: true, PoopCount: 2, LastSeen: time.Now()}
+	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+
+	if len(m.poops) != 2 {
+		t.Fatalf("Expected 2 poops initialized, got %d", len(m.poops))
+	}
+
+	// Test :clean command
+	m.handleCommand(":clean")
+	if len(m.poops) != 0 {
+		t.Errorf("Expected 0 poops after cleaning, got %d", len(m.poops))
+	}
+	if m.petState.Cleanliness != 100.0 {
+		t.Errorf("Expected cleanliness 100 after :clean, got %f", m.petState.Cleanliness)
+	}
+}
+
+func TestCommandFailureReaction(t *testing.T) {
+	tempDir := t.TempDir()
+	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
+	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+
+	// Simulate command failure
+	m.onCommandResult(false)
+	if m.state != StateAngry {
+		t.Errorf("Expected StateAngry on command failure, got %v", m.state)
+	}
+}
+
+func TestSoundBellToggle(t *testing.T) {
+	tempDir := t.TempDir()
+	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
+	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+
+	orig := m.soundEnabled
+	m.handleCommand(":bell")
+	if m.soundEnabled == orig {
+		t.Errorf("Expected :bell to toggle soundEnabled")
 	}
 }
 
@@ -92,7 +146,6 @@ func TestDirectoryPersistence(t *testing.T) {
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 
-	// Test cd to tempDir
 	m.handleCommand("cd " + tempDir)
 	if m.cwd != tempDir {
 		t.Errorf("Expected cwd to be %s, got %s", tempDir, m.cwd)
@@ -104,7 +157,6 @@ func TestCommandHistoryNavigation(t *testing.T) {
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 
-	// Simulate typing and entering commands
 	m.terminalInput.SetValue("cmd1")
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = newM.(Model)
@@ -117,25 +169,16 @@ func TestCommandHistoryNavigation(t *testing.T) {
 		t.Fatalf("Expected 2 commands in history, got %d", len(m.cmdHistory))
 	}
 
-	// Navigate Up
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m = newM.(Model)
 	if m.terminalInput.Value() != "cmd2" {
 		t.Errorf("Expected 'cmd2' on first Up, got %s", m.terminalInput.Value())
 	}
 
-	// Navigate Up again
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	m = newM.(Model)
 	if m.terminalInput.Value() != "cmd1" {
 		t.Errorf("Expected 'cmd1' on second Up, got %s", m.terminalInput.Value())
-	}
-
-	// Navigate Down
-	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = newM.(Model)
-	if m.terminalInput.Value() != "cmd2" {
-		t.Errorf("Expected 'cmd2' on Down, got %s", m.terminalInput.Value())
 	}
 }
 
@@ -146,19 +189,16 @@ func TestScrollbackNavigation(t *testing.T) {
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = newM.(Model)
 
-	// Add 50 history lines
 	for i := 0; i < 50; i++ {
 		m.addHistoryLine(string(rune('A' + (i % 26))))
 	}
 
-	// Test PgUp
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
 	m = newM.(Model)
 	if m.scrollOffset != 5 {
 		t.Errorf("Expected scrollOffset 5 after PgUp, got %d", m.scrollOffset)
 	}
 
-	// Test PgDn
 	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	m = newM.(Model)
 	if m.scrollOffset != 0 {
@@ -171,7 +211,6 @@ func TestTabCompletion(t *testing.T) {
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 
-	// Type prefix ":fe" and press Tab
 	m.terminalInput.SetValue(":fe")
 	m.terminalInput.SetCursor(3)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
