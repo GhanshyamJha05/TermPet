@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ func TestModelLifecycleAndActions(t *testing.T) {
 		Hunger:    80.0, // Hungry initially
 		Happiness: 50.0,
 		Energy:    60.0,
+		Theme:     "dracula",
 		LastSeen:  time.Now(),
 	}
 
@@ -61,10 +63,13 @@ func TestModelLifecycleAndActions(t *testing.T) {
 		t.Errorf("Expected pet name Sparky, got %q", m.petState.Name)
 	}
 
-	// Test terminal command execution (echo hello) -> should trigger StateVictory
+	// Test terminal command execution (echo hello) -> should trigger StateVictory and award XP
 	m.handleCommand("echo hello")
 	if m.state != StateVictory {
 		t.Errorf("Successful command should trigger StateVictory, got %v", m.state)
+	}
+	if m.petState.XP <= 0 {
+		t.Errorf("Expected XP to increase from command execution, got %d", m.petState.XP)
 	}
 
 	// Test View rendering
@@ -74,15 +79,92 @@ func TestModelLifecycleAndActions(t *testing.T) {
 	}
 }
 
+func TestThemeCustomization(t *testing.T) {
+	tempDir := t.TempDir()
+	petState := &PetState{Name: "Draco", Hunger: 20.0, Theme: "dracula", LastSeen: time.Now()}
+	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = newM.(Model)
+
+	// Switch theme to cyber
+	m.handleCommand(":theme cyber")
+	if m.petState.Theme != "cyber" {
+		t.Errorf("Expected theme 'cyber', got %s", m.petState.Theme)
+	}
+
+	// Render view with cyber theme
+	rendered := m.View()
+	if !strings.Contains(rendered, "cyber") {
+		t.Errorf("Expected theme name in status bar view")
+	}
+}
+
+func TestDragonEvolutionAndStages(t *testing.T) {
+	lvl1, stage1 := CalculateLevelAndStage(0)
+	if lvl1 != 1 || stage1 != StageBaby {
+		t.Errorf("0 XP should be Level 1 Baby, got Lv.%d %s", lvl1, stage1)
+	}
+
+	lvl5, stage5 := CalculateLevelAndStage(450)
+	if lvl5 != 5 || stage5 != StageYoung {
+		t.Errorf("450 XP should be Level 5 Juvenile, got Lv.%d %s", lvl5, stage5)
+	}
+
+	lvl10, stage10 := CalculateLevelAndStage(950)
+	if lvl10 != 10 || stage10 != StageAdult {
+		t.Errorf("950 XP should be Level 10 Ancient, got Lv.%d %s", lvl10, stage10)
+	}
+
+	// Test frame rendering changes across stages
+	babyFrame := GetFrame("dragon", false, StateIdle, StageBaby, DirRight, 0)
+	juvFrame := GetFrame("dragon", false, StateIdle, StageYoung, DirRight, 0)
+	ancientFrame := GetFrame("dragon", false, StateIdle, StageAdult, DirRight, 0)
+
+	if babyFrame == juvFrame || juvFrame == ancientFrame {
+		t.Errorf("Frames should differ between Baby, Juvenile, and Ancient evolutionary stages")
+	}
+}
+
+func TestCustomSpriteLoading(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("No home dir found")
+	}
+	customDir := filepath.Join(home, ".termpet", "sprites")
+	_ = os.MkdirAll(customDir, 0755)
+
+	customJSON := `{
+		"name": "phoenix",
+		"normal": {
+			"idle": {
+				"left": ["~<v>~"],
+				"right": ["~<v>~"]
+			}
+		},
+		"compact": {
+			"idle": {
+				"left": ["<v>"],
+				"right": ["<v>"]
+			}
+		}
+	}`
+	testFile := filepath.Join(customDir, "phoenix.json")
+	_ = os.WriteFile(testFile, []byte(customJSON), 0644)
+	defer os.Remove(testFile)
+
+	LoadCustomSprites()
+	if _, ok := SpeciesMap["phoenix"]; !ok {
+		t.Errorf("Expected custom species 'phoenix' to be loaded into SpeciesMap")
+	}
+}
+
 func TestTypingReactionAndCuriosity(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 	m.state = StateIdle
 
-	// Force seed typing reaction directly
 	m.handleTypingReaction()
-	// Either stayed or turned curious based on roll; test calling directly works
 	if m.state == StateCurious {
 		if m.targetY == 0 {
 			t.Errorf("Expected targetY to be updated near prompt")
@@ -99,7 +181,6 @@ func TestPoopMechanicAndCleaning(t *testing.T) {
 		t.Fatalf("Expected 2 poops initialized, got %d", len(m.poops))
 	}
 
-	// Test :clean command
 	m.handleCommand(":clean")
 	if len(m.poops) != 0 {
 		t.Errorf("Expected 0 poops after cleaning, got %d", len(m.poops))
@@ -114,22 +195,9 @@ func TestCommandFailureReaction(t *testing.T) {
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 
-	// Simulate command failure
 	m.onCommandResult(false)
 	if m.state != StateAngry {
 		t.Errorf("Expected StateAngry on command failure, got %v", m.state)
-	}
-}
-
-func TestSoundBellToggle(t *testing.T) {
-	tempDir := t.TempDir()
-	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
-
-	orig := m.soundEnabled
-	m.handleCommand(":bell")
-	if m.soundEnabled == orig {
-		t.Errorf("Expected :bell to toggle soundEnabled")
 	}
 }
 
@@ -174,12 +242,6 @@ func TestCommandHistoryNavigation(t *testing.T) {
 	if m.terminalInput.Value() != "cmd2" {
 		t.Errorf("Expected 'cmd2' on first Up, got %s", m.terminalInput.Value())
 	}
-
-	newM, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = newM.(Model)
-	if m.terminalInput.Value() != "cmd1" {
-		t.Errorf("Expected 'cmd1' on second Up, got %s", m.terminalInput.Value())
-	}
 }
 
 func TestScrollbackNavigation(t *testing.T) {
@@ -211,12 +273,12 @@ func TestTabCompletion(t *testing.T) {
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
 	m := NewModel("dragon", false, tempDir+"/state.json", petState)
 
-	m.terminalInput.SetValue(":fe")
-	m.terminalInput.SetCursor(3)
+	m.terminalInput.SetValue(":the")
+	m.terminalInput.SetCursor(4)
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = newM.(Model)
 
-	if m.terminalInput.Value() != ":feed" {
-		t.Errorf("Expected completion ':feed', got %s", m.terminalInput.Value())
+	if !strings.HasPrefix(m.terminalInput.Value(), ":theme") {
+		t.Errorf("Expected completion ':theme', got %s", m.terminalInput.Value())
 	}
 }

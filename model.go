@@ -87,7 +87,7 @@ func NewModel(species string, compact bool, statePath string, petState *PetState
 	}
 
 	ti := textinput.New()
-	ti.Placeholder = "Type shell command or pet command (:feed, :pet, :clean, :bell, :name <txt>)..."
+	ti.Placeholder = "Type shell command or pet command (:feed, :pet, :theme <name>, :clean)..."
 	ti.Focus()
 	ti.Prompt = "❯ "
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#50FA7B")).Bold(true)
@@ -125,9 +125,9 @@ func NewModel(species string, compact bool, statePath string, petState *PetState
 		poops:         initialPoops,
 		soundEnabled:  true,
 		history: []string{
-			"✨ TermPet companion initialized! Watch your pet react to your commands.",
-			"💡 Use standard terminal commands (cd, dir, ls, git, echo, etc.)",
-			"💡 Pet commands: ':f' (feed), ':p' (pet), ':clean' (clean mess), ':bell' (toggle sound), ':name <txt>'",
+			"✨ TermPet companion initialized! Watch your pet grow and evolve as you work.",
+			"💡 Shell commands: (cd, dir, ls, git, echo, etc.)",
+			"💡 Customization: ':theme <name>' (dracula, fire, emerald, cyber, sakura), ':clean', ':feed', ':pet'",
 			"💡 Navigation: [↑/↓] command history, [Tab] completion, [PgUp/PgDn] scrollback",
 		},
 	}
@@ -289,7 +289,6 @@ func (m *Model) decayStats() {
 
 func (m *Model) beep() {
 	if m.soundEnabled {
-		// Terminal audible bell
 		fmt.Print("\a")
 	}
 }
@@ -315,7 +314,6 @@ func (m *Model) updateParticles() {
 	for _, p := range m.particles {
 		p.lifetime--
 		if p.lifetime > 0 {
-			// Float upward gently
 			if p.lifetime%2 == 0 {
 				p.y--
 			}
@@ -326,11 +324,9 @@ func (m *Model) updateParticles() {
 }
 
 func (m *Model) handleTypingReaction() {
-	// If pet is idle or walking, 30% chance to become curious and step toward prompt
 	if (m.state == StateIdle || m.state == StateWalking) && m.rng.Float32() < 0.35 {
 		m.state = StateCurious
 		m.stateTimer = 20
-		// Walk towards lower-left area where prompt is
 		m.targetX = m.rng.Intn(18) + 2
 		m.targetY = m.height - 7
 		if m.targetY < 1 {
@@ -341,6 +337,28 @@ func (m *Model) handleTypingReaction() {
 		} else {
 			m.dir = DirLeft
 		}
+	}
+}
+
+func (m *Model) addXP(amount int) {
+	oldLvl := m.petState.Level
+	oldStage := m.petState.Stage
+
+	m.petState.XP += amount
+	m.petState.Level, m.petState.Stage = CalculateLevelAndStage(m.petState.XP)
+
+	if m.petState.Level > oldLvl {
+		m.notice = fmt.Sprintf("🎉 LEVEL UP! %s reached Lv. %d!", m.petState.Name, m.petState.Level)
+		m.noticeTime = 40
+		m.spawnParticles(m.x+4, m.y, []string{"★", "✨", "💎", "⭐"}, []string{"#FFE600", "#00FFFF", "#FF007F"}, 12)
+		m.beep()
+	}
+
+	if m.petState.Stage != oldStage {
+		m.notice = fmt.Sprintf("🌟 EVOLUTION! %s evolved into %s stage!", m.petState.Name, m.petState.Stage)
+		m.noticeTime = 50
+		m.spawnParticles(m.x+4, m.y, []string{"👑", "✨", "⚡", "🌟"}, []string{"#FFD700", "#FF79C6", "#50FA7B"}, 16)
+		m.beep()
 	}
 }
 
@@ -407,12 +425,25 @@ func (m *Model) handleTabCompletion() {
 	prefix := val[:cursor]
 	parts := strings.Fields(prefix)
 
-	petCommands := []string{":feed", ":f", ":pet", ":p", ":clean", ":bell", ":name ", ":quit", ":q", "clear", "cls", "exit"}
+	petCommands := []string{":feed", ":f", ":pet", ":p", ":clean", ":theme ", ":bell", ":name ", ":stage", ":quit", ":q", "clear", "cls", "exit"}
 	if len(parts) <= 1 && (strings.HasPrefix(prefix, ":") || strings.HasPrefix(prefix, "c") || strings.HasPrefix(prefix, "e")) {
 		for _, cmd := range petCommands {
 			if strings.HasPrefix(cmd, prefix) && cmd != prefix {
 				m.terminalInput.SetValue(cmd + val[cursor:])
 				m.terminalInput.SetCursor(len(cmd))
+				return
+			}
+		}
+	}
+
+	// Theme name auto-complete
+	if strings.HasPrefix(prefix, ":theme ") {
+		themePrefix := strings.TrimPrefix(prefix, ":theme ")
+		for themeName := range Themes {
+			if strings.HasPrefix(themeName, themePrefix) {
+				newVal := ":theme " + themeName + val[cursor:]
+				m.terminalInput.SetValue(newVal)
+				m.terminalInput.SetCursor(len(":theme " + themeName))
 				return
 			}
 		}
@@ -492,11 +523,12 @@ func (m *Model) handleCommand(rawCmd string) {
 		if m.petState.Happiness > 100 {
 			m.petState.Happiness = 100
 		}
+		m.addXP(10)
 		m.state = StateHappy
 		m.stateTimer = 25
-		m.notice = "Yum! Fed " + m.petState.Name + "! (Hunger -25%, Happiness +15%)"
+		m.notice = "Yum! Fed " + m.petState.Name + "! (+10 XP)"
 		m.noticeTime = 25
-		m.addHistoryLine(fmt.Sprintf("🍗 Fed %s! Hunger: %.0f%% | Happiness: %.0f%%.", m.petState.Name, m.petState.Hunger, m.petState.Happiness))
+		m.addHistoryLine(fmt.Sprintf("🍗 Fed %s! Hunger: %.0f%% | Mood: %.0f%% (+10 XP).", m.petState.Name, m.petState.Hunger, m.petState.Happiness))
 		m.spawnParticles(m.x+4, m.y+1, []string{"♥", "★", "✨"}, []string{"#FF79C6", "#F1FA8C", "#50FA7B"}, 6)
 		_ = SaveState(m.statePath, m.petState)
 		return
@@ -507,11 +539,12 @@ func (m *Model) handleCommand(rawCmd string) {
 		if m.petState.Happiness > 100 {
 			m.petState.Happiness = 100
 		}
+		m.addXP(10)
 		m.state = StateHappy
 		m.stateTimer = 25
-		m.notice = "Purr! You petted " + m.petState.Name + "! (Happiness +20%)"
+		m.notice = "Purr! You petted " + m.petState.Name + "! (+10 XP)"
 		m.noticeTime = 25
-		m.addHistoryLine(fmt.Sprintf("💖 You gave %s warm pets! Happiness is now %.0f%%.", m.petState.Name, m.petState.Happiness))
+		m.addHistoryLine(fmt.Sprintf("💖 You gave %s warm pets! Mood: %.0f%% (+10 XP).", m.petState.Name, m.petState.Happiness))
 		m.spawnParticles(m.x+4, m.y, []string{"♥", "💖", "✨"}, []string{"#FF79C6", "#FF92D0", "#BD93F9"}, 7)
 		_ = SaveState(m.statePath, m.petState)
 		return
@@ -528,15 +561,40 @@ func (m *Model) handleCommand(rawCmd string) {
 			if m.petState.Happiness > 100 {
 				m.petState.Happiness = 100
 			}
+			m.addXP(25 * count)
 			m.state = StateHappy
 			m.stateTimer = 20
-			m.notice = fmt.Sprintf("✨ Cleaned up %d messes! Cleanliness is 100%%.", count)
+			m.notice = fmt.Sprintf("✨ Cleaned up %d messes! (+%d XP)", count, 25*count)
 			m.noticeTime = 25
-			m.addHistoryLine(fmt.Sprintf("🧹 Cleaned up after %s! Fresh and tidy.", m.petState.Name))
+			m.addHistoryLine(fmt.Sprintf("🧹 Cleaned up %d messes for %s! Fresh and tidy.", count, m.petState.Name))
 			m.spawnParticles(m.x+4, m.y+1, []string{"✨", "⭐", "🫧"}, []string{"#8BE9FD", "#F1FA8C", "#50FA7B"}, 8)
 			_ = SaveState(m.statePath, m.petState)
 		} else {
 			m.addHistoryLine("🧹 All clean! No messes found.")
+		}
+		return
+	}
+
+	if strings.HasPrefix(lower, ":theme") {
+		args := strings.Fields(rawCmd)
+		if len(args) == 1 {
+			themeList := make([]string, 0, len(Themes))
+			for th := range Themes {
+				themeList = append(themeList, th)
+			}
+			m.addHistoryLine(fmt.Sprintf("🎨 Active theme: %s. Available: %s", m.petState.Theme, strings.Join(themeList, ", ")))
+			return
+		}
+
+		chosenTheme := strings.ToLower(args[1])
+		if _, ok := Themes[chosenTheme]; ok {
+			m.petState.Theme = chosenTheme
+			m.notice = fmt.Sprintf("🎨 Switched color theme to %s!", chosenTheme)
+			m.noticeTime = 25
+			m.addHistoryLine(fmt.Sprintf("🎨 Theme set to %s.", chosenTheme))
+			_ = SaveState(m.statePath, m.petState)
+		} else {
+			m.addHistoryLine(fmt.Sprintf("Unknown theme %q. Available: dracula, fire, emerald, cyber, sakura", chosenTheme))
 		}
 		return
 	}
@@ -593,12 +651,10 @@ func (m *Model) handleCommand(rawCmd string) {
 		info, err := os.Stat(newPath)
 		if err != nil || !info.IsDir() {
 			m.addHistoryLine(fmt.Sprintf("cd: no such directory: %s", target))
-			// Command failed reaction
 			m.onCommandResult(false)
 		} else {
 			m.cwd = newPath
 			_ = os.Chdir(newPath)
-			// Command succeeded reaction
 			m.onCommandResult(true)
 		}
 		return
@@ -622,7 +678,7 @@ func (m *Model) handleCommand(rawCmd string) {
 		return
 	}
 
-	// Trigger pet reaction based on execution outcome!
+	// Trigger pet reaction and reward XP for work!
 	m.onCommandResult(err == nil)
 
 	lines := strings.Split(strings.TrimRight(string(out), "\r\n"), "\n")
@@ -638,16 +694,16 @@ func (m *Model) handleCommand(rawCmd string) {
 // React to command success or failure
 func (m *Model) onCommandResult(success bool) {
 	if success {
-		// Victory reaction: spin & celebratory stars
 		m.state = StateVictory
 		m.stateTimer = 25
 		m.petState.Happiness += 5.0
 		if m.petState.Happiness > 100 {
 			m.petState.Happiness = 100
 		}
+		// Reward 20 XP for every successful command
+		m.addXP(20)
 		m.spawnParticles(m.x+4, m.y, []string{"★", "✨", "🎉"}, []string{"#F1FA8C", "#50FA7B", "#BD93F9"}, 6)
 	} else {
-		// Angry reaction: breathe tiny fire puffs
 		m.state = StateAngry
 		m.stateTimer = 25
 		m.spawnParticles(m.x+6, m.y+1, []string{"🔥", "💥", "💨"}, []string{"#FF5555", "#FFB86C", "#F1FA8C"}, 5)
@@ -693,7 +749,6 @@ func (m *Model) updateBehavior() {
 		}
 
 	case StateSleeping:
-		// Wake up if energy is recovered
 		if m.petState.Energy >= 95.0 || m.stateTimer <= 0 {
 			m.pickNextState()
 		}
@@ -714,7 +769,6 @@ func (m *Model) pickNextState() {
 		return
 	}
 
-	// Low energy leads to sleep
 	if m.petState.Energy <= 20.0 {
 		m.state = StateSleeping
 		m.stateTimer = m.rng.Intn(100) + 60
@@ -723,16 +777,16 @@ func (m *Model) pickNextState() {
 
 	roll := m.rng.Float32()
 	switch {
-	case roll < 0.45: // Walk
+	case roll < 0.45:
 		m.state = StateWalking
 		m.pickRandomTarget()
 		m.stateTimer = m.rng.Intn(60) + 20
 
-	case roll < 0.75: // Idle
+	case roll < 0.75:
 		m.state = StateIdle
 		m.stateTimer = m.rng.Intn(40) + 20
 
-	default: // Rest/Sleep if tired
+	default:
 		if m.petState.Energy < 50.0 {
 			m.state = StateSleeping
 			m.stateTimer = m.rng.Intn(80) + 40
@@ -744,7 +798,7 @@ func (m *Model) pickNextState() {
 }
 
 func (m *Model) pickRandomTarget() {
-	sprite := GetFrame(m.species, m.compact, m.state, m.dir, m.tickCount)
+	sprite := GetFrame(m.species, m.compact, m.state, m.petState.Stage, m.dir, m.tickCount)
 	spW, spH := GetSpriteDimensions(sprite)
 
 	maxX := m.width - spW - 2
@@ -786,7 +840,7 @@ func (m *Model) stepTowardTarget() {
 }
 
 func (m *Model) clampPosition() {
-	sprite := GetFrame(m.species, m.compact, m.state, m.dir, m.tickCount)
+	sprite := GetFrame(m.species, m.compact, m.state, m.petState.Stage, m.dir, m.tickCount)
 	spW, spH := GetSpriteDimensions(sprite)
 
 	maxX := m.width - spW - 1
@@ -816,6 +870,11 @@ func (m *Model) clampPosition() {
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "Starting TermPet..."
+	}
+
+	theme, ok := Themes[m.petState.Theme]
+	if !ok {
+		theme = Themes["dracula"]
 	}
 
 	usableHeight := m.height - 2
@@ -849,33 +908,14 @@ func (m Model) View() string {
 		}
 	}
 
-	// 2. Fetch current sprite frame
-	sprite := GetFrame(m.species, m.compact, m.state, m.dir, m.tickCount)
+	// 2. Fetch current sprite frame with evolutionary stage support
+	sprite := GetFrame(m.species, m.compact, m.state, m.petState.Stage, m.dir, m.tickCount)
 
-	spriteStyle := lipgloss.NewStyle()
-	switch m.state {
-	case StateHappy:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#FF79C6")).Bold(true)
-	case StateVictory:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#F1FA8C")).Bold(true)
-	case StateAngry:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#FF5555")).Bold(true)
-	case StateCurious:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#BD93F9")).Bold(true)
-	case StateHungry:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#FF5555")).Bold(true)
-	case StateSleeping:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#8BE9FD"))
-	case StateWalking:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#50FA7B"))
-	default:
-		spriteStyle = spriteStyle.Foreground(lipgloss.Color("#FFB86C")).Bold(true)
-	}
-
-	styledSprite := spriteStyle.Render(sprite)
+	// 3. Render TrueColor gradient on sprite
+	styledSprite := RenderGradientSprite(sprite, theme, m.state)
 	spriteLines := strings.Split(styledSprite, "\n")
 
-	// 3. Render base screen lines (history + poops + pet + particles)
+	// 4. Render base screen lines (history + poops + pet + particles)
 	screenLines := make([]string, usableHeight)
 	for r := 0; r < usableHeight; r++ {
 		bgText := historyLines[r]
@@ -929,16 +969,16 @@ func (m Model) View() string {
 		}
 	}
 
-	// 4. Command Input Bar with current working directory prompt
+	// 5. Command Input Bar with current working directory prompt
 	dirBase := filepath.Base(m.cwd)
 	if dirBase == "." || dirBase == "/" || dirBase == "\\" {
 		dirBase = m.cwd
 	}
-	cwdPrompt := lipgloss.NewStyle().Foreground(lipgloss.Color("#BD93F9")).Render(dirBase) + " "
+	cwdPrompt := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.PetPrimary)).Render(dirBase) + " "
 	inputBar := cwdPrompt + m.terminalInput.View()
 
-	// 5. Status Bar
-	statusBar := m.renderStatusBar()
+	// 6. Status Bar
+	statusBar := m.renderStatusBar(theme)
 
 	return strings.Join(screenLines, "\n") + "\n" + inputBar + "\n" + statusBar
 }
@@ -973,7 +1013,7 @@ func sliceFromWidth(s string, startWidth int) string {
 	return ""
 }
 
-func (m Model) renderStatusBar() string {
+func (m Model) renderStatusBar(theme ColorTheme) string {
 	hungerVal := int(m.petState.Hunger)
 	if hungerVal > 100 {
 		hungerVal = 100
@@ -993,12 +1033,12 @@ func (m Model) renderStatusBar() string {
 	}
 
 	barStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#282A36")).
+		Background(lipgloss.Color(theme.StatusBarBg)).
 		Foreground(lipgloss.Color("#F8F8F2")).
 		Width(m.width)
 
 	nameStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#BD93F9")).
+		Foreground(lipgloss.Color(theme.PetPrimary)).
 		Bold(true)
 
 	hungerStyle := lipgloss.NewStyle().
@@ -1006,18 +1046,22 @@ func (m Model) renderStatusBar() string {
 		Bold(true)
 
 	happyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF79C6")).
+		Foreground(lipgloss.Color(theme.MoodColor)).
 		Bold(true)
 
 	energyStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#8BE9FD")).
 		Bold(true)
 
+	stageStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.PetAccent)).
+		Bold(true)
+
 	stateStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#F1FA8C"))
 
 	keyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#50FA7B"))
+		Foreground(lipgloss.Color(theme.PromptColor))
 
 	scrollIndicator := ""
 	if m.scrollOffset > 0 {
@@ -1039,8 +1083,11 @@ func (m Model) renderStatusBar() string {
 		noticeStr = fmt.Sprintf(" | %s", m.notice)
 	}
 
-	info := fmt.Sprintf(" 🐉 %s | Hunger: %s | Mood: %s | Energy: %s | %s%s%s%s",
+	info := fmt.Sprintf(" 🐉 %s [%s Lv.%d %dXP] | Hunger: %s | Mood: %s | Energy: %s | %s%s%s%s",
 		nameStyle.Render(m.petState.Name),
+		stageStyle.Render(string(m.petState.Stage)),
+		m.petState.Level,
+		m.petState.XP,
 		hungerStyle.Render(fmt.Sprintf("%d%%", hungerVal)),
 		happyStyle.Render(fmt.Sprintf("%d%%", happyVal)),
 		energyStyle.Render(fmt.Sprintf("%d%%", energyVal)),
@@ -1050,13 +1097,12 @@ func (m Model) renderStatusBar() string {
 		noticeStr,
 	)
 
-	hints := fmt.Sprintf("[%s]:f [%s]:p [%s]:clean [%s]%s [%s]exit ",
+	hints := fmt.Sprintf("[%s]:theme [%s]:f [%s]:p [%s]:clean %s ",
+		keyStyle.Render(theme.Name),
 		keyStyle.Render(":feed"),
 		keyStyle.Render(":pet"),
 		keyStyle.Render(":clean"),
-		keyStyle.Render(":bell"),
 		bellIcon,
-		keyStyle.Render("quit"),
 	)
 
 	infoLen := runewidth.StringWidth(info)
