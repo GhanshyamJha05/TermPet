@@ -1,130 +1,65 @@
-# termpet 🐾
+# termpet 🐾🐉
 
-A cozy terminal pet that roams freely around your entire terminal window. Built with Go, [Bubble Tea](https://github.com/charmbracelet/bubbletea), and [Lip Gloss](https://github.com/charmbracelet/lipgloss).
+An interactive terminal pet that roams across your **real live terminal workspace** while allowing you to run shell commands in place!
 
-No CGO required. Runs cleanly across Linux, macOS, and Windows Terminal.
-
----
-
-## Features
-
-- **2D Free Movement**: Roams the full terminal window, not just a single line. Gracefully adapts to terminal resizing and bounds.
-- **Dynamic State Machine**:
-  - `idle`: Observes surroundings calmly.
-  - `walking`: Picks a random target in the window, flips its facing direction (left/right), and paces smoothly.
-  - `sleeping`: Rests peacefully with floating `z Z` animations.
-  - `happy`: Celebrates with hearts and stars when petted or fed.
-  - `hungry`: When hunger reaches \(\ge 75\%\), face expressions change and the pet begs with `feed me!`.
-- **Species Options**: Built-in sprites for `cat`, `dog`, and `ghost`.
-- **Compact / Tmux Mode**: Pass `--small` for a 1-line sprite ideal for narrow tmux panes or status bars.
-- **Persistence**: Remembers your pet's name, hunger level, and last-seen time in `~/.termpet/state.json`. Accumulates offline hunger realistically (capped at 100%).
-- **Smooth Animation**: Rendered at 10 FPS with `tea.Tick`.
+You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls`, `git`, `cd`, `echo`, etc.). Your pet roams above and across your terminal output in real time.
 
 ---
 
-## Installation
+## What's New
+1. **Interactive Shell Integration**: Type any terminal or PowerShell/Bash command right at the `❯ ` prompt. Output scrolls naturally in the terminal history window while your pet explores above it.
+2. **Baby Dragon Species (`dragon`) by default**:
+   - Detailed ASCII wings, horns, tail, animated paws, resting sleep pose (`(___m_m)`), happy heart wings (`~(<3|W|<3)~`), and hungry fire breath (`🔥`).
+   - Also supports `cat`, `dog`, and `ghost`.
+3. **Compact Mode**: `--small` provides a compact one-line sprite for narrow tmux or terminal split panes.
 
-### Using `go install`
+---
 
-```bash
-go install .
+## Built-In Pet Commands & Shortcuts
+
+You can type these directly into the terminal prompt:
+
+| Command | Action |
+|---|---|
+| `:f` or `:feed` or `feed` | Feed your pet (hunger -25%, triggers happy celebration) |
+| `:p` or `:pet` or `pet` | Pet your dragon (triggers happy affection) |
+| `:name <newname>` | Rename your pet (e.g., `:name Sparky`) |
+| `clear` or `cls` | Clears terminal history scrollback |
+| `exit` or `quit` or `Ctrl+C` | Saves pet status to `~/.termpet/state.json` and exits cleanly |
+
+---
+
+## State Machine & Behavior
+
+- **Idle**: Stretches wings, blinks, looks around.
+- **Walking**: Flaps baby wings, paces left/right towards random points on screen.
+- **Sleeping**: Curled up comfortably with floating `z Z` snore effects.
+- **Happy**: Glowing eyes, fluttering wings, and hearts/sparkles.
+- **Hungry**: When hunger hits \(\ge 75\%\), breathes tiny warning puffs with `feed me!`.
+- **Persistence**: Hunger slowly accumulates while away (capped at 100%).
+
+---
+
+## Building & Running
+
+### 1. Build
+```powershell
+go build -o termpet.exe .
 ```
-*(Or install globally from a git remote if hosted)*
 
-### Building from Source
+### 2. Run
+```powershell
+# Run with default Baby Dragon
+.\termpet.exe
 
-```bash
-# Clone or navigate to the directory
-cd "local pet"
-
-# Build executable
-go build -o termpet .
-```
-
----
-
-## Usage
-
-```bash
-# Run with default species (cat)
-termpet
-
-# Choose a different species: dog or ghost
-termpet -species dog
-termpet -species ghost
+# Choose a custom name
+.\termpet.exe -name Sparky
 
 # Compact 1-line mode for tmux panes
-termpet -small
-
-# Launch with a specific name
-termpet -name Mochi
+.\termpet.exe -small
 ```
 
----
-
-## Key Bindings
-
-| Key | Action |
-|-----|--------|
-| `f` | **Feed**: Lowers hunger by 25% and makes your pet happy |
-| `p` | **Pet**: Show affection to your pet (triggers happy animation) |
-| `n` | **Rename**: Enter renaming mode (`Enter` to save, `Esc` to cancel) |
-| `q` / `Esc` / `Ctrl+C` | **Quit**: Cleanly saves pet state and exits alt-screen |
-
----
-
-## How to Add a New Species
-
-Sprites are decoupled from app logic in [sprites.go](file:///sprites.go). To add a new species (e.g. `bunny`):
-
-1. Open `sprites.go`.
-2. Add an entry to the `SpeciesMap` map:
-
-```go
-"bunny": {
-    Name: "bunny",
-    Normal: SpeciesSprites{
-        Idle: SpriteFrames{
-            Left:  []string{" (\\(\\ \n (-.-) \n o_(\")(\")"},
-            Right: []string{" /)/) \n (-.-) \n (\")(\")_o"},
-        },
-        Walking: SpriteFrames{
-            Left:  []string{" (\\(\\ \n ('.' ) \n o_(\")(\")", " (\\(\\ \n ('.' ) \n  /  \\ "},
-            Right: []string{" /)/) \n ( '.' ) \n (\")(\")_o", " /)/) \n ( '.' ) \n  /  \\ "},
-        },
-        Sleeping: SpriteFrames{
-            Left:  []string{" (\\(\\  z\n (-.-)  Z\n o_(\")(\")"},
-            Right: []string{"z  /)/)\n Z(-.-) \n  (\")(\")_o"},
-        },
-        Happy: SpriteFrames{
-            Left:  []string{" (\\(\\  ♥\n (^.^) \n o_(\")(\")"},
-            Right: []string{"♥ /)/)\n  (^.^) \n  (\")(\")_o"},
-        },
-        Hungry: SpriteFrames{
-            Left:  []string{" (\\(\\ feed me!\n (;.;) \n o_(\")(\")"},
-            Right: []string{"feed me! /)/)\n        (;.;) \n        (\")(\")_o"},
-        },
-    },
-    Compact: SpeciesSprites{
-        Idle:     SpriteFrames{Left: []string{"(\\( -.-)"}, Right: []string{"(-.- /)/)"}},
-        Walking:  SpriteFrames{Left: []string{"(\\( '.' )~"}, Right: []string{"~( '.' /)/)"}},
-        Sleeping: SpriteFrames{Left: []string{"(-.-)zZ"}, Right: []string{"Zz(-.-)"}},
-        Happy:    SpriteFrames{Left: []string{"(^.^)♥"}, Right: []string{"♥(^.^)"}},
-        Hungry:   SpriteFrames{Left: []string{"(;.;)[feed!]"}, Right: []string{"[feed!](;.;)"}},
-    },
-},
-```
-
-Now you can run:
-```bash
-termpet -species bunny
-```
-
----
-
-## Running Tests
-
-```bash
+### 3. Run Unit Tests
+```powershell
 go test -v ./...
 ```
-
