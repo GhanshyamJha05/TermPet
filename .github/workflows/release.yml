@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Cross-Platform Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux
+          - os: linux
+            arch: amd64
+            artifact_name: termpet-linux-amd64
+          - os: linux
+            arch: arm64
+            artifact_name: termpet-linux-arm64
+          # macOS
+          - os: darwin
+            arch: amd64
+            artifact_name: termpet-darwin-amd64
+          - os: darwin
+            arch: arm64
+            artifact_name: termpet-darwin-arm64
+          # Windows
+          - os: windows
+            arch: amd64
+            artifact_name: termpet-windows-amd64.exe
+          - os: windows
+            arch: arm64
+            artifact_name: termpet-windows-arm64.exe
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Compile binary
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -ldflags="-s -w" -o "${{ matrix.artifact_name }}" .
+
+      - name: Archive binary
+        run: |
+          mkdir dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            zip "dist/${{ matrix.artifact_name }}.zip" "${{ matrix.artifact_name }}" LICENSE README.md
+          else
+            tar -czvf "dist/${{ matrix.artifact_name }}.tar.gz" "${{ matrix.artifact_name }}" LICENSE README.md
+          fi
+
+      - name: Upload artifact archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/*
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten release assets and generate checksums
+        run: |
+          mkdir release_assets
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release_assets/ \;
+          cd release_assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release_assets/*
+          generate_release_notes: true

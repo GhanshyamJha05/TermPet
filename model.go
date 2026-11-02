@@ -73,12 +73,13 @@ type Model struct {
 
 	// Sound / Terminal bell toggle
 	soundEnabled bool
+	config       *AppConfig
 
 	// Random source
 	rng *rand.Rand
 }
 
-func NewModel(species string, compact bool, statePath string, petState *PetState) Model {
+func NewModel(species string, compact bool, statePath string, petState *PetState, cfg *AppConfig) Model {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	currentDir, err := os.Getwd()
@@ -123,7 +124,8 @@ func NewModel(species string, compact bool, statePath string, petState *PetState
 		cmdIndex:      -1,
 		particles:     make([]Particle, 0),
 		poops:         initialPoops,
-		soundEnabled:  true,
+		soundEnabled:  cfg.SoundEnabled,
+		config:        cfg,
 		history: []string{
 			"✨ TermPet companion initialized! Watch your pet grow and evolve as you work.",
 			"💡 Shell commands: (cd, dir, ls, git, echo, etc.)",
@@ -713,8 +715,12 @@ func (m *Model) onCommandResult(success bool) {
 
 func (m *Model) addHistoryLine(line string) {
 	m.history = append(m.history, line)
-	if len(m.history) > 500 {
-		m.history = m.history[len(m.history)-500:]
+	maxLines := 500
+	if m.config != nil && m.config.MaxScrollback > 0 {
+		maxLines = m.config.MaxScrollback
+	}
+	if len(m.history) > maxLines {
+		m.history = m.history[len(m.history)-maxLines:]
 	}
 }
 

@@ -1,12 +1,41 @@
 # TermPet 🐾🐉
 
+[![CI](https://github.com/GhanshyamJha05/TermPet/actions/workflows/ci.yml/badge.svg)](https://github.com/GhanshyamJha05/TermPet/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/GhanshyamJha05/TermPet?include_prereleases)](https://github.com/GhanshyamJha05/TermPet/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 An interactive terminal pet that roams across your **real live terminal workspace** while allowing you to run shell commands in place!
 
 You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls`, `git`, `cd`, `echo`, etc.). Your pet roams above and across your terminal output in real time with active reactions to your work, dynamic leveling, evolution, and customizable color themes.
 
 ---
 
-## What's New: Visuals & Customization 🎨✨
+## Architecture & Configuration ⚙️
+
+TermPet automatically creates and respects global configurations stored at `~/.termpet/config.json`:
+
+```json
+{
+  "default_theme": "dracula",
+  "default_species": "dragon",
+  "tick_rate_ms": 1000,
+  "sound_enabled": true,
+  "max_scrollback": 500
+}
+```
+
+- **Clean Decoupled Architecture**:
+  - `config.go`: Persists and validates user configuration defaults.
+  - `state.go`: Multi-stat persistence and offline elapsed hunger calculation.
+  - `sprites.go`: Procedural ASCII frames, dragon evolution stages, and external JSON loader.
+  - `model.go`: Bubble Tea Elm-architecture event loop and interactive subshell execution.
+- **CI/CD Pipeline**:
+  - Multi-platform test matrix running across **Ubuntu Linux**, **macOS**, and **Windows**.
+  - Automated cross-compilation release workflow publishing universal binaries (`amd64` and `arm64` for Linux, macOS, and Windows) with SHA256 checksums on tag pushes.
+
+---
+
+## Visuals & Customization 🎨✨
 
 1. **TrueColor Gradient Sprites**:
    - Multi-line sprites are dynamically rendered with smooth vertical gradients matching your chosen theme (horns, wings, belly, and claws highlighted in distinct hues).
@@ -49,7 +78,7 @@ You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls
   - **Success (exit 0)**: Dragon celebrates with a victory spin (`StateVictory`), raising its claws with celebratory stars (`★`, `✨`).
   - **Failure (non-zero exit)**: Dragon enters `StateAngry`, stomping and puffing fire sparks (`🔥`, `💥`).
 - **Multi-Stat Simulation**:
-  - **Hunger**: Rises over time; triggers audible alert at \(\ge 90\%\).
+  - **Hunger**: Rises over time; triggers audible alert at $\ge 90\%$.
   - **Mood / Happiness**: Boosted by care and successful commands.
   - **Energy**: Drains while active; pet sleeps when tired.
   - **Cleanliness & Poop Mechanic**: Messes (`💩`) appear after long sessions; type `:clean` to tidy up with bubble particles.
@@ -83,14 +112,16 @@ You **never have to quit or switch spaces** to run terminal commands (`dir`, `ls
 
 ---
 
-## Building & Running
+## Installation & Running
 
-### 1. Build
+### Option 1: Pre-built Binary
+Download the pre-compiled binary for your operating system and architecture directly from the [Releases](https://github.com/GhanshyamJha05/TermPet/releases) page.
+
+### Option 2: Build From Source
 ```powershell
 go build -o termpet.exe .
 ```
 
-### 2. Run
 ```powershell
 # Run with default Baby Dragon
 .\termpet.exe
@@ -99,14 +130,12 @@ go build -o termpet.exe .
 .\termpet.exe -theme fire
 .\termpet.exe -theme cyber
 
-# Custom name
-.\termpet.exe -name Sparky
-
-# Compact mode for small tmux panes
-.\termpet.exe -small
+# Start with a specific species
+.\termpet.exe -species cat
 ```
 
-### 3. Run Unit Tests
-```powershell
-go test -v ./...
-```
+---
+
+## License
+
+MIT License. Crafted with ❤️ for terminal power users.

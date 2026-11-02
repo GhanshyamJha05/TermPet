@@ -10,8 +10,11 @@ import (
 )
 
 func main() {
-	speciesFlag := flag.String("species", "dragon", "Species of the pet: dragon, cat, dog, ghost, or custom")
-	themeFlag := flag.String("theme", "dracula", "Color theme: dracula, fire, emerald, cyber, sakura")
+	configPath, _ := DefaultConfigPath()
+	appConfig, _ := LoadConfig(configPath)
+
+	speciesFlag := flag.String("species", "", "Species of the pet: dragon, cat, dog, ghost, or custom")
+	themeFlag := flag.String("theme", "", "Color theme: dracula, fire, emerald, cyber, sakura")
 	smallFlag := flag.Bool("small", false, "Compact one-line sprite mode for tmux / small panes")
 	nameFlag := flag.String("name", "", "Custom pet name (defaults to saved name or Draco)")
 	flag.Parse()
@@ -19,7 +22,16 @@ func main() {
 	// Load any custom sprites from ~/.termpet/sprites/*.json
 	LoadCustomSprites()
 
-	chosenSpecies := strings.ToLower(strings.TrimSpace(*speciesFlag))
+	// Species fallback: CLI flag -> Config file -> dragon
+	chosenSpecies := "dragon"
+	if appConfig != nil && appConfig.DefaultSpecies != "" {
+		chosenSpecies = appConfig.DefaultSpecies
+	}
+	if *speciesFlag != "" {
+		chosenSpecies = *speciesFlag
+	}
+	chosenSpecies = strings.ToLower(strings.TrimSpace(chosenSpecies))
+
 	if _, ok := SpeciesMap[chosenSpecies]; !ok {
 		fmt.Fprintf(os.Stderr, "Unknown species %q. Available built-ins: dragon, cat, dog, ghost (or add JSON in ~/.termpet/sprites/)\n", chosenSpecies)
 		os.Exit(1)
@@ -39,10 +51,14 @@ func main() {
 	state, err := LoadState(statePath, defaultName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load state (%v), starting fresh\n", err)
+		defaultTheme := "dracula"
+		if appConfig != nil && appConfig.DefaultTheme != "" {
+			defaultTheme = appConfig.DefaultTheme
+		}
 		state = &PetState{
 			Name:   defaultName,
 			Hunger: 20.0,
-			Theme:  "dracula",
+			Theme:  defaultTheme,
 		}
 	}
 
@@ -53,9 +69,11 @@ func main() {
 		if _, ok := Themes[strings.ToLower(*themeFlag)]; ok {
 			state.Theme = strings.ToLower(*themeFlag)
 		}
+	} else if state.Theme == "" && appConfig != nil && appConfig.DefaultTheme != "" {
+		state.Theme = appConfig.DefaultTheme
 	}
 
-	m := NewModel(chosenSpecies, *smallFlag, statePath, state)
+	m := NewModel(chosenSpecies, *smallFlag, statePath, state, appConfig)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

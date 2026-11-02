@@ -23,7 +23,7 @@ func TestModelLifecycleAndActions(t *testing.T) {
 		LastSeen:  time.Now(),
 	}
 
-	m := NewModel("dragon", false, statePath, petState)
+	m := NewModel("dragon", false, statePath, petState, DefaultConfig())
 
 	// Simulate window size
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -82,7 +82,7 @@ func TestModelLifecycleAndActions(t *testing.T) {
 func TestThemeCustomization(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Theme: "dracula", LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = newM.(Model)
 
@@ -161,7 +161,7 @@ func TestCustomSpriteLoading(t *testing.T) {
 func TestTypingReactionAndCuriosity(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 	m.state = StateIdle
 
 	m.handleTypingReaction()
@@ -175,7 +175,7 @@ func TestTypingReactionAndCuriosity(t *testing.T) {
 func TestPoopMechanicAndCleaning(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, HasPoop: true, PoopCount: 2, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 
 	if len(m.poops) != 2 {
 		t.Fatalf("Expected 2 poops initialized, got %d", len(m.poops))
@@ -193,7 +193,7 @@ func TestPoopMechanicAndCleaning(t *testing.T) {
 func TestCommandFailureReaction(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, Happiness: 80.0, Energy: 80.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 
 	m.onCommandResult(false)
 	if m.state != StateAngry {
@@ -212,7 +212,7 @@ func TestDirectoryPersistence(t *testing.T) {
 	})
 
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 
 	m.handleCommand("cd " + tempDir)
 	if m.cwd != tempDir {
@@ -223,7 +223,7 @@ func TestDirectoryPersistence(t *testing.T) {
 func TestCommandHistoryNavigation(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 
 	m.terminalInput.SetValue("cmd1")
 	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -247,7 +247,7 @@ func TestCommandHistoryNavigation(t *testing.T) {
 func TestScrollbackNavigation(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = newM.(Model)
 
@@ -271,7 +271,7 @@ func TestScrollbackNavigation(t *testing.T) {
 func TestTabCompletion(t *testing.T) {
 	tempDir := t.TempDir()
 	petState := &PetState{Name: "Draco", Hunger: 20.0, LastSeen: time.Now()}
-	m := NewModel("dragon", false, tempDir+"/state.json", petState)
+	m := NewModel("dragon", false, tempDir+"/state.json", petState, DefaultConfig())
 
 	m.terminalInput.SetValue(":the")
 	m.terminalInput.SetCursor(4)
